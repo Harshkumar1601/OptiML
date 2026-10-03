@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ML-Powered Compiler Optimization Advisor</title>
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="dark-theme">
+
+  <!-- Header / Navigation Bar -->
+  <header class="app-header">
+    <div class="logo-container">
+      <div class="logo-icon">
+        <i class="fa-solid fa-brain-circuit"></i>
+      </div>
+      <div class="logo-text">
+        <h1>Compiler Optimization Advisor</h1>
+        <p class="subtitle">ML-Guided Pass Recommendation & TAC Optimization Engine</p>
+      </div>
+    </div>
+    
+    <div class="header-status">
+      <div class="status-indicator" id="backend-status">
+        <span class="status-dot offline"></span>
+        <span class="status-label">Checking Backend...</span>
+      </div>
+      <div class="model-badge" id="model-badge" title="Trained Random Forest Classifier">
+        <i class="fa-solid fa-microchip"></i>
+        <span>RF Model Ready</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Application Container -->
+  <main class="app-container">
+
+    <!-- Left Workspace Panel: Source Code & Controls -->
+    <section class="panel editor-panel">
+      <div class="panel-header">
+        <h2><i class="fa-solid fa-code"></i> Source Code Editor</h2>
+        
+        <div class="preset-selector">
+          <label for="demo-presets"><i class="fa-solid fa-wand-magic-sparkles"></i> Preset Demos:</label>
+          <select id="demo-presets" class="custom-select">
+            <option value="constant_folding">1. Constant Folding</option>
+            <option value="constant_propagation">2. Constant Propagation</option>
+            <option value="cse">3. Common Subexpression (CSE)</option>
+            <option value="dead_code">4. Dead Code Elimination</option>
+            <option value="strength_reduction">5. Strength Reduction</option>
+            <option value="multi_pass" selected>6. Multi-Pass Comprehensive Demo</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="editor-wrapper">
+        <div class="line-numbers" id="line-numbers">1</div>
+        <textarea id="code-input" spellcheck="false" placeholder="Write or paste restricted C-like code here..."></textarea>
+      </div>
+
+      <div class="panel-actions">
+        <button id="btn-clear" class="btn btn-secondary">
+          <i class="fa-solid fa-trash-can"></i> Clear
+        </button>
+        <button id="btn-tokenize-only" class="btn btn-secondary">
+          <i class="fa-solid fa-list-check"></i> Tokenize Only
+        </button>
+        <button id="btn-analyze" class="btn btn-primary pulse-btn">
+          <i class="fa-solid fa-play"></i> Run Optimization Pipeline
+        </button>
+      </div>
+
+      <!-- Quick Syntax Cheat Sheet -->
+      <div class="cheatsheet-card">
+        <div class="cheatsheet-header">
+          <span><i class="fa-solid fa-circle-info"></i> Language Scope</span>
+          <span class="badge badge-outline">Restricted C-Subset</span>
+        </div>
+        <div class="cheatsheet-tags">
+          <code>int</code> <code>float</code> <code>if / else</code> <code>while</code> <code>for</code> <code>functions</code> <code>+ - * /</code> <code>== != &lt; &gt;</code>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Workspace Panel: Results, ML Advice & Visualizer -->
+    <section class="panel results-panel">
+      
+      <!-- Phase Navigation Tabs -->
+      <nav class="phase-tabs">
+        <button class="tab-btn active" data-tab="tab-overview">
+          <i class="fa-solid fa-chart-pie"></i> Overview
+        </button>
+        <button class="tab-btn" data-tab="tab-ml">
+          <i class="fa-solid fa-robot"></i> ML Advisor
+          <span class="badge badge-estimated">ESTIMATED</span>
+        </button>
+        <button class="tab-btn" data-tab="tab-tac">
+          <i class="fa-solid fa-code-compare"></i> TAC Before / After
+          <span class="badge badge-measured">MEASURED</span>
+        </button>
+        <button class="tab-btn" data-tab="tab-ast">
+          <i class="fa-solid fa-diagram-project"></i> AST & Symbols
+        </button>
+        <button class="tab-btn" data-tab="tab-tokens">
+          <i class="fa-solid fa-font"></i> Tokens
+        </button>
+      </nav>
+
+      <!-- Tab Content Area -->
+      <div class="tab-contents">
+
+        <!-- ------------------------------------------------------------- -->
+        <!-- Tab 1: Overview Dashboard -->
+        <!-- ------------------------------------------------------------- -->
+        <div id="tab-overview" class="tab-pane active">
+          
+          <div id="empty-state" class="placeholder-state">
+            <i class="fa-solid fa-microchip-ai placeholder-icon"></i>
+            <h3>No Code Analyzed Yet</h3>
+            <p>Select a preset program on the left and click <strong>"Run Optimization Pipeline"</strong> to run the 10-step compiler analysis and ML advisor.</p>
+          </div>
+
+          <div id="overview-content" class="hidden">
+            <!-- Metrics Summary Cards -->
+            <div class="metrics-grid">
+              
+              <div class="metric-card glass-card">
+                <div class="metric-icon blue"><i class="fa-solid fa-file-code"></i></div>
+                <div class="metric-info">
+                  <span class="metric-label">Instructions Before</span>
+                  <span class="metric-value" id="stat-tac-before">0</span>
+                </div>
+              </div>
+
+              <div class="metric-card glass-card">
+                <div class="metric-icon green"><i class="fa-solid fa-bolt"></i></div>
+                <div class="metric-info">
+                  <span class="metric-label">Instructions After</span>
+                  <span class="metric-value" id="stat-tac-after">0</span>
+                </div>
+              </div>
+
+              <div class="metric-card glass-card">
+                <div class="metric-icon purple"><i class="fa-solid fa-arrow-down-short-wide"></i></div>
+                <div class="metric-info">
+                  <span class="metric-label">Instruction Reduction</span>
+                  <span class="metric-value" id="stat-reduction">0 (0%)</span>
+                </div>
+                <span class="badge badge-measured">MEASURED</span>
+              </div>
+
+              <div class="metric-card glass-card">
+                <div class="metric-icon gold"><i class="fa-solid fa-circle-check"></i></div>
+                <div class="metric-info">
+                  <span class="metric-label">Passes Applied</span>
+                  <span class="metric-value" id="stat-passes-count">0 / 5</span>
+                </div>
+                <span class="badge badge-estimated">ESTIMATED</span>
+              </div>
+
+            </div>
+
+            <!-- Visual Charts Grid -->
+            <div class="charts-grid">
+              
+              <div class="chart-card glass-card">
+                <div class="chart-header">
+                  <h3><i class="fa-solid fa-chart-column"></i> TAC Instruction Reduction</h3>
+                  <span class="badge badge-measured">MEASURED</span>
+                </div>
+                <div class="chart-wrapper">
+                  <canvas id="chart-tac-comparison"></canvas>
+                </div>
+              </div>
+
+              <div class="chart-card glass-card">
+                <div class="chart-header">
+                  <h3><i class="fa-solid fa-gauge-high"></i> ML Model Confidence Scores</h3>
+                  <span class="badge badge-estimated">ESTIMATED</span>
+                </div>
+                <div class="chart-wrapper">
+                  <canvas id="chart-ml-confidence"></canvas>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Pass Recommendations Summary Table -->
+            <div class="summary-card glass-card">
+              <div class="card-header">
+                <h3><i class="fa-solid fa-list-check"></i> ML Pass Recommendation Summary</h3>
+                <span class="badge badge-info">Gatekeeper Mode Active</span>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Optimization Pass</th>
+                      <th>Confidence Score</th>
+                      <th>ML Decision</th>
+                      <th>Pass Status</th>
+                      <th>Result Type</th>
+                    </tr>
+                  </thead>
+                  <tbody id="summary-passes-table">
+                    <!-- Dynamic Rows -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ------------------------------------------------------------- -->
+        <!-- Tab 2: ML Advisor & Explanations -->
+        <!-- ------------------------------------------------------------- -->
+        <div id="tab-ml" class="tab-pane">
+          <div class="ml-dashboard">
+
+            <!-- Model Info Header -->
+            <div class="model-info-banner glass-card">
+              <div class="info-item">
+                <span class="info-label">Model Architecture:</span>
+                <span class="info-value" id="ml-info-arch">MultiOutputClassifier(RandomForest)</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Confidence Threshold:</span>
+                <span class="info-value">0.50 (50%)</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Training Programs:</span>
+                <span class="info-value" id="ml-info-samples">480</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Test Hamming Loss:</span>
+                <span class="info-value highlight-green" id="ml-info-hamming">0.0217</span>
+              </div>
+            </div>
+
+            <!-- Feature Vector Display (15 Structural Features) -->
+            <div class="features-card glass-card">
+              <div class="card-header">
+                <h3><i class="fa-solid fa-network-wired"></i> Extracted Structural Features (15 Features)</h3>
+                <span class="badge badge-outline">No Data Leakage</span>
+              </div>
+              <p class="section-description">Features are extracted purely from the program's AST & initial TAC prior to optimization.</p>
+              <div class="features-grid" id="features-container">
+                <!-- 15 Feature Cards rendered dynamically -->
+              </div>
+            </div>
+
+            <!-- Explanations Cards -->
+            <div class="explanations-card glass-card">
+              <div class="card-header">
+                <h3><i class="fa-solid fa-comment-dots"></i> Pass Explanations & Reasoning</h3>
+                <span class="badge badge-estimated">ESTIMATED</span>
+              </div>
+              <div class="explanations-list" id="explanations-container">
+                <!-- Explanation Cards -->
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ------------------------------------------------------------- -->
+        <!-- Tab 3: TAC Before / After Comparison -->
+        <!-- ------------------------------------------------------------- -->
+        <div id="tab-tac" class="tab-pane">
+          <div class="tac-comparison-view">
+            
+            <div class="tac-column glass-card">
+              <div class="column-header danger-header">
+                <h3><i class="fa-solid fa-file-lines"></i> Unoptimized Three-Address Code (TAC Before)</h3>
+                <span class="badge badge-outline" id="count-tac-before">0 Instructions</span>
+              </div>
+              <pre class="code-block" id="tac-before-code"><code>// Run pipeline to view TAC</code></pre>
+            </div>
+
+            <div class="tac-column glass-card">
+              <div class="column-header success-header">
+                <h3><i class="fa-solid fa-wand-magic-sparkles"></i> Optimized Three-Address Code (TAC After)</h3>
+                <div class="badge-group">
+                  <span class="badge badge-measured">MEASURED</span>
+                  <span class="badge badge-outline" id="count-tac-after">0 Instructions</span>
+                </div>
+              </div>
+              <pre class="code-block" id="tac-after-code"><code>// Run pipeline to view optimized TAC</code></pre>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ------------------------------------------------------------- -->
+        <!-- Tab 4: AST & Symbol Table -->
+        <!-- ------------------------------------------------------------- -->
+        <div id="tab-ast" class="tab-pane">
+          <div class="ast-symbol-view">
+
+            <!-- Symbol Table Section -->
+            <div class="symbol-card glass-card">
+              <div class="card-header">
+                <h3><i class="fa-solid fa-table-list"></i> Symbol Table</h3>
+                <span class="badge badge-outline" id="symbol-count-badge">0 Symbols</span>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Identifier</th>
+                      <th>Category</th>
+                      <th>Type</th>
+                      <th>Scope Level</th>
+                      <th>Enclosing Function</th>
+                      <th>Line</th>
+                    </tr>
+                  </thead>
+                  <tbody id="symbol-table-body">
+                    <tr><td colspan="6" class="text-center">No symbol data available.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- AST Tree Visualizer -->
+            <div class="ast-card glass-card">
+              <div class="card-header">
+                <h3><i class="fa-solid fa-sitemap"></i> Abstract Syntax Tree (AST Visualizer)</h3>
+                <div class="ast-actions">
+                  <button id="btn-expand-ast" class="btn btn-sm btn-secondary"><i class="fa-solid fa-expand"></i> Expand All</button>
+                  <button id="btn-collapse-ast" class="btn btn-sm btn-secondary"><i class="fa-solid fa-compress"></i> Collapse All</button>
+                </div>
+              </div>
+              <div class="ast-tree-wrapper" id="ast-tree-container">
+                <p class="placeholder-text">Run analysis to view tree structure.</p>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ------------------------------------------------------------- -->
+        <!-- Tab 5: Tokens -->
+        <!-- ------------------------------------------------------------- -->
+        <div id="tab-tokens" class="tab-pane">
+          <div class="tokens-view glass-card">
+            <div class="card-header">
+              <h3><i class="fa-solid fa-coins"></i> Lexical Tokens Stream</h3>
+              <span class="badge badge-outline" id="token-count-badge">0 Tokens</span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Index</th>
+                    <th>Token Type</th>
+                    <th>Lexeme Value</th>
+                    <th>Line Number</th>
+                  </tr>
+                </thead>
+                <tbody id="tokens-table-body">
+                  <tr><td colspan="4" class="text-center">No tokens generated yet.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Global Error / Diagnostics Container -->
+      <div id="error-diagnostics" class="error-banner hidden">
+        <div class="error-header">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          <h4 id="error-title">Compiler Error Detected</h4>
+        </div>
+        <p id="error-message">Error details will appear here.</p>
+        <ul id="error-list" class="error-bullet-list"></ul>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="app-footer">
+    <p>Principles of Compiler Design (PCD) Assignment — <strong>ML-Powered Compiler Optimization Advisor</strong></p>
+    <p class="footer-sub">Technologies: PLY Lex-Yacc | Scikit-learn MultiOutput Random Forest | Flask REST API | Chart.js</p>
+  </footer>
+
+  <!-- App Scripts -->
+  <script src="js/api.js"></script>
+  <script src="js/editor.js"></script>
+  <script src="js/visualizer.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/phases.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
