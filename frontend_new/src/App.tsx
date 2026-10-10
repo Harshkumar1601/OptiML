@@ -812,12 +812,12 @@ function ASTTab({ result }: { result: PipelineResponse | null }) {
       )}
 
       {/* AST Tree */}
-      <div className="card" style={{ flex: 1 }}>
+      <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         <div className="card-header">
           <span className="card-title"><GitBranch size={13} /> Abstract Syntax Tree</span>
-          <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Click nodes to expand/collapse</span>
+          <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Top-down graphical AST diagram • Pan, zoom & click to inspect</span>
         </div>
-        <div style={{ padding: 12, overflow: 'auto', maxHeight: 500 }}>
+        <div style={{ padding: 12, flex: 1 }}>
           <AstViewer ast={ast as Record<string, unknown> ?? null} />
         </div>
       </div>
