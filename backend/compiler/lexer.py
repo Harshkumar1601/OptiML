@@ -47,11 +47,13 @@ tokens: tuple = (
     "FLOAT_LITERAL",
     # Identifier (also catches keywords — resolved below)
     "IDENTIFIER",
-    # Arithmetic operators
+    # Arithmetic & bitwise operators
     "PLUS",
     "MINUS",
     "TIMES",
     "DIVIDE",
+    "LSHIFT",  # <<
+    "RSHIFT",  # >>
     # Relational operators
     "LT",      # <
     "GT",      # >
@@ -104,6 +106,14 @@ def t_EQ(t):
 
 def t_NEQ(t):
     r"""!=""" 
+    return t
+
+def t_LSHIFT(t):
+    r"""<<"""
+    return t
+
+def t_RSHIFT(t):
+    r""">>"""
     return t
 
 def t_LT(t):

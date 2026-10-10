@@ -76,6 +76,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from compiler.ir_generator import TACInstruction
+from compiler.c_reconstructor import reconstruct_c_code
 import config
 
 
@@ -94,6 +95,8 @@ class OptimizationResult:
     passes_recommended:  List[str]
     passes_applied:      List[str]
     changes_per_pass:    Dict[str, int]   # instructions eliminated per pass
+    ast:                 Optional[Any] = None
+    symbol_table:        Optional[Any] = None
 
     @property
     def stats(self) -> Dict[str, Any]:
@@ -112,99 +115,29 @@ class OptimizationResult:
         }
 
     def to_dict(self) -> Dict[str, Any]:
+        c_code = reconstruct_c_code(
+            self.instructions_after,
+            ast=self.ast,
+            symbol_table=self.symbol_table,
+        )
         return {
-            "tac_before":        self.instructions_before,
-            "tac_after":         self.instructions_after,
-            "text_before":       self.text_before,
-            "text_after":        self.text_after,
-            "optimized_code":    reconstruct_c_code(self.instructions_after),
+            "tac_before":         self.instructions_before,
+            "tac_after":          self.instructions_after,
+            "text_before":        self.text_before,
+            "text_after":         self.text_after,
+            "optimized_code":     c_code,
+            "optimized_c_code":   c_code,
+            "optimized_tac":      self.text_after,
             "passes_recommended": self.passes_recommended,
-            "passes_applied":    self.passes_applied,
-            "changes_per_pass":  self.changes_per_pass,
-            "stats":             self.stats,
+            "passes_applied":     self.passes_applied,
+            "changes_per_pass":   self.changes_per_pass,
+            "stats":              self.stats,
         }
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Helpers
 # ═══════════════════════════════════════════════════════════════════════════
-
-def reconstruct_c_code(instructions: List[Dict[str, Any]]) -> str:
-    """Reconstruct clean C-like source code representation from TAC instructions."""
-    lines = []
-    indent = 0
-    pending_params: List[str] = []
-
-    for instr in instructions:
-        op = instr.get("op", "")
-        dest = instr.get("dest") or instr.get("result") or ""
-        a1 = str(instr.get("arg1") if instr.get("arg1") is not None else "")
-        a2 = str(instr.get("arg2") if instr.get("arg2") is not None else "")
-        extra = str(instr.get("extra") if instr.get("extra") is not None else "")
-
-        if op == "FUNC_BEGIN":
-            lines.append(f"int {a1}() {{")
-            indent = 4
-            continue
-        elif op == "FUNC_END":
-            lines.append("}")
-            lines.append("")
-            indent = 0
-            continue
-
-        ind = " " * indent
-
-        if op == "LABEL":
-            lines.append(f"{a1}:")
-        elif op == "JUMP":
-            lines.append(f"{ind}goto {a1};")
-        elif op in ("JUMP_UNLESS", "JUMP_IF_FALSE"):
-            cond = a2 if a2 else a1
-            target = a1 if a2 else a2
-            lines.append(f"{ind}if (!{cond}) goto {target};")
-        elif op == "JUMP_IF":
-            lines.append(f"{ind}if ({a2}) goto {a1};")
-        elif op in ("ASSIGN", "="):
-            lines.append(f"{ind}{dest} = {a1};")
-        elif op == "BINOP":
-            operator = extra if extra else "+"
-            lines.append(f"{ind}{dest} = {a1} {operator} {a2};")
-        elif op == "UNARY":
-            operator = extra if extra else "-"
-            lines.append(f"{ind}{dest} = {operator}{a1};")
-        elif op == "COMPARE":
-            operator = extra if extra else "=="
-            lines.append(f"{ind}{dest} = {a1} {operator} {a2};")
-        elif op == "AND":
-            lines.append(f"{ind}{dest} = {a1} && {a2};")
-        elif op == "OR":
-            lines.append(f"{ind}{dest} = {a1} || {a2};")
-        elif op == "NOT":
-            lines.append(f"{ind}{dest} = !{a1};")
-        elif op == "PARAM":
-            pending_params.append(a1)
-        elif op == "CALL":
-            args_str = ", ".join(pending_params)
-            pending_params = []
-            if dest:
-                lines.append(f"{ind}{dest} = {a1}({args_str});")
-            else:
-                lines.append(f"{ind}{a1}({args_str});")
-        elif op == "RETURN":
-            if a1:
-                lines.append(f"{ind}return {a1};")
-            else:
-                lines.append(f"{ind}return;")
-        else:
-            if dest and a1 and extra and a2:
-                lines.append(f"{ind}{dest} = {a1} {extra} {a2};")
-            elif dest and a1:
-                lines.append(f"{ind}{dest} = {a1};")
-
-    if not lines:
-        return "// No optimized code generated"
-
-    return "\n".join(lines).strip()
 
 def _count_real(instructions: List[Dict[str, Any]]) -> int:
     """Count instructions that are not structural markers (FUNC_BEGIN/END/LABEL)."""
@@ -667,6 +600,8 @@ _PASS_FUNCTIONS = {
 def apply(
     instructions: List[TACInstruction],
     passes: List[str],
+    ast: Optional[Any] = None,
+    symbol_table: Optional[Any] = None,
 ) -> OptimizationResult:
     """
     Apply the requested optimization passes to `instructions` in the fixed
@@ -678,6 +613,8 @@ def apply(
     Args:
         instructions : raw TACInstruction list from the IR generator
         passes       : list of pass name strings recommended by the ML model
+        ast          : optional ProgramNode for high-level C reconstruction
+        symbol_table : optional symbol table for type information
 
     Returns:
         OptimizationResult with measured before/after counts
@@ -718,4 +655,6 @@ def apply(
         passes_recommended=list(passes),
         passes_applied=passes_applied,
         changes_per_pass=changes_per_pass,
+        ast=ast,
+        symbol_table=symbol_table,
     )

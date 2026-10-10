@@ -125,7 +125,12 @@ def run_pipeline(source_code: str) -> Dict[str, Any]:
     # ------------------------------------------------------------------
     # Step 8 & 9: Optimization (only ML-recommended passes) + Diff/Stats
     # ------------------------------------------------------------------
-    opt_result = apply(instructions, passes=recommended_passes)
+    opt_result = apply(
+        instructions,
+        passes=recommended_passes,
+        ast=ast_node,
+        symbol_table=semantic_result.get("symbol_table"),
+    )
 
     # ------------------------------------------------------------------
     # Step 10: Assemble full response
@@ -169,6 +174,9 @@ def _error_response(
         "tac_before_text": ir_result.get("text", "") if ir_result else "",
         "tac_after":       [],
         "tac_after_text":  "",
+        "optimized_code":  "",
+        "optimized_c_code": "",
+        "optimized_tac":   "",
     }
 
     return {

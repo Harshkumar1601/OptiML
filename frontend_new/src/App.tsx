@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 
 import { getHealth, getModelInfo, analyzeSource, tokenizeSource, type PipelineResponse, type ModelInfoResponse } from './api';
-import { PRESETS, passDisplayName, passAbbr, FEATURE_LABELS } from './utils';
+import { PRESETS, passDisplayName, passAbbr, FEATURE_LABELS, formatTACLines } from './utils';
 import { TacComparisonChart, ConfidenceChart } from './components/Charts';
 import { TacViewer } from './components/TacViewer';
 import { AstViewer } from './components/AstViewer';
@@ -562,12 +562,14 @@ function MLTab({
   }
 
   const { features, recommendations } = result.ml;
-  const optimizedC = result.phases?.optimized_code || '';
+  const optimizedC = result.phases?.optimized_c_code || result.phases?.optimized_code || '';
   const tacAfter = result.phases?.tac_after || [];
+  const optimizedTacText = result.phases?.optimized_tac || result.phases?.tac_after_text || formatTACLines(tacAfter).join('\n');
+  const currentCode = viewMode === 'c' ? optimizedC : optimizedTacText;
 
   const handleCopy = () => {
-    if (!optimizedC) return;
-    navigator.clipboard.writeText(optimizedC);
+    if (!currentCode) return;
+    navigator.clipboard.writeText(currentCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -597,7 +599,7 @@ function MLTab({
                 Optimized TAC
               </button>
             </div>
-            {optimizedC && (
+            {currentCode && (
               <>
                 <button className="btn btn-ghost btn-sm" onClick={handleCopy} style={{ fontSize: 11, gap: 4 }}>
                   {copied ? <Check size={12} color="var(--accent-green)" /> : <Copy size={12} />}
@@ -606,10 +608,11 @@ function MLTab({
                 {onApplyCode && (
                   <button
                     className="btn btn-primary btn-sm"
-                    onClick={() => onApplyCode(optimizedC)}
+                    onClick={() => onApplyCode(currentCode)}
                     style={{ fontSize: 11, gap: 4, background: 'var(--accent-blue)' }}
+                    title={viewMode === 'c' ? 'Apply optimized C source code to editor' : 'Apply optimized TAC to editor'}
                   >
-                    Apply to Editor
+                    {viewMode === 'c' ? 'Apply to Editor' : 'Apply TAC to Editor'}
                   </button>
                 )}
               </>

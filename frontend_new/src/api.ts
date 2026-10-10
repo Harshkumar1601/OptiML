@@ -38,7 +38,13 @@ export interface PipelineResponse {
     tac_before?: unknown[];
     tac_after?: unknown[];
     optimized_code?: string;
+    optimized_c_code?: string;
+    optimized_tac?: string;
+    tac_before_text?: string;
+    tac_after_text?: string;
   };
+  optimized_c_code?: string;
+  optimized_tac?: string;
   ml?: {
     features?: Record<string, number>;
     recommendations?: Array<{

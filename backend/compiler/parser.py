@@ -40,6 +40,7 @@ precedence = (
     ("left",  "AND"),
     ("left",  "EQ", "NEQ"),
     ("left",  "LT", "GT", "LE", "GE"),
+    ("left",  "LSHIFT", "RSHIFT"),
     ("left",  "PLUS", "MINUS"),
     ("left",  "TIMES", "DIVIDE"),
     ("right", "UMINUS"),        # Unary minus (virtual token, highest precedence)
@@ -358,6 +359,16 @@ def p_expr_binop_plus(p):
 def p_expr_binop_minus(p):
     """expr : expr MINUS term"""
     p[0] = N.BinOpNode(op="-", left=p[1], right=p[3], line=p.lineno(2))
+
+
+def p_expr_binop_lshift(p):
+    """expr : expr LSHIFT term"""
+    p[0] = N.BinOpNode(op="<<", left=p[1], right=p[3], line=p.lineno(2))
+
+
+def p_expr_binop_rshift(p):
+    """expr : expr RSHIFT term"""
+    p[0] = N.BinOpNode(op=">>", left=p[1], right=p[3], line=p.lineno(2))
 
 
 def p_expr_term(p):

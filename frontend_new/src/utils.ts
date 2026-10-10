@@ -97,17 +97,24 @@ export function formatTACLines(instructions: unknown[]): string[] {
     if (typeof instr === 'string') return instr;
     const i = instr as Record<string, string>;
     const op = i.op || '';
-    const dst = i.result ? `${i.result} = ` : '';
-    const arg1 = i.arg1 || '';
-    const arg2 = i.arg2 ? ` ${i.arg2}` : '';
+    const dest = i.dest || i.result || '';
+    const dst = dest ? `${dest} = ` : '';
+    const arg1 = i.arg1 != null ? String(i.arg1) : '';
+    const arg2 = i.arg2 != null ? ` ${i.arg2}` : '';
+    const extra = i.extra || '';
 
+    if (op === 'FUNC_BEGIN')    return `[function ${arg1}]`;
+    if (op === 'FUNC_END')      return `[end ${arg1}]`;
     if (op === 'LABEL')         return `${arg1}:`;
     if (op === 'JUMP')          return `goto ${arg1}`;
-    if (op === 'JUMP_IF_FALSE') return `ifFalse ${arg1} goto ${arg2.trim()}`;
-    if (op === 'RETURN')        return `return ${arg1}`;
+    if (op === 'JUMP_UNLESS' || op === 'JUMP_IF_FALSE') return `ifFalse ${i.arg2 || arg1} goto ${i.arg1 || arg2}`.trim();
+    if (op === 'JUMP_IF')       return `if ${i.arg2 || arg1} goto ${i.arg1 || arg2}`.trim();
+    if (op === 'RETURN')        return arg1 ? `return ${arg1}` : 'return';
     if (op === 'PARAM')         return `param ${arg1}`;
     if (op === 'CALL')          return `${dst}call ${arg1},${arg2}`;
-    if (op === '=')             return `${dst}${arg1}`;
+    if (op === 'ASSIGN' || op === '=') return `${dst}${arg1}`;
+    if (op === 'BINOP' || op === 'COMPARE') return `${dst}${arg1} ${extra || op}${arg2}`.trim();
+    if (op === 'UNARY')         return `${dst}${extra || '-'}${arg1}`;
     return `${dst}${arg1} ${op}${arg2}`.trim();
   });
 }
