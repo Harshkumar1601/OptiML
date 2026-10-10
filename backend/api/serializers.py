@@ -161,6 +161,7 @@ def assemble_response(
             "tac_before_text": ir_result.get("text", ""),
             "tac_after":       opt_dict.get("tac_after", []),
             "tac_after_text":  opt_dict.get("text_after", ""),
+            "optimized_code":  opt_dict.get("optimized_code", ""),
         },
         "ml":    ml_block,
         "stats": stats,

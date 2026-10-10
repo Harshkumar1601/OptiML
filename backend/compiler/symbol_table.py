@@ -80,30 +80,43 @@ class SymbolTable:
         """Return the current nesting depth (0 = global)."""
         return len(self._scopes) - 1
 
-    # -----------------------------------------------------------------------
-    # Declaration
-    # -----------------------------------------------------------------------
     def declare(self, entry: Dict[str, Any]) -> None:
         """
         Insert `entry` into the current (innermost) scope.
 
         Raises DuplicateDeclarationError if the name already exists
-        in the CURRENT scope (not outer scopes — shadowing is not an error
-        in this language because all vars are function-local, but redeclaration
-        in the same block is an error).
+        in the CURRENT scope.
         """
         name = entry["name"]
         current = self._scopes[-1]
+
         if name in current:
             existing = current[name]
             raise DuplicateDeclarationError(
                 f"'{name}' already declared in this scope "
                 f"(first declared at line {existing['line']})"
             )
+
+        # Check if this exact symbol (name, line, scope_level) was already added to _all_symbols
+        # (e.g. during previous iterations of a loop executing the same declaration statement)
+        existing_symbol = None
+        for s in reversed(self._all_symbols):
+            if (s["name"] == name and
+                s.get("line") == entry.get("line") and
+                s.get("scope_level") == self.scope_level):
+                existing_symbol = s
+                break
+
+        if existing_symbol is not None:
+            current[name] = existing_symbol
+            return
+
         entry.setdefault("scope_level", self.scope_level)
         current[name] = entry
-        # Also append to the permanent log for serialization
-        self._all_symbols.append(dict(entry))
+        # Store reference so value updates during assignments update _all_symbols
+        self._all_symbols.append(entry)
+
+
 
     # -----------------------------------------------------------------------
     # Lookup

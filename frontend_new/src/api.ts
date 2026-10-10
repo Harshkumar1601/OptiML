@@ -29,6 +29,7 @@ export interface PipelineResponse {
       name: string;
       type: string;
       category: string;
+      value?: string;
       scope_level: number;
       enclosing_function?: string;
       line: number;
@@ -36,6 +37,7 @@ export interface PipelineResponse {
     semantic_errors?: Array<{ message: string; line?: number }>;
     tac_before?: unknown[];
     tac_after?: unknown[];
+    optimized_code?: string;
   };
   ml?: {
     features?: Record<string, number>;

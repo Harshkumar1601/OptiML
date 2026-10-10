@@ -3,7 +3,7 @@ import './index.css';
 import {
   LayoutDashboard, Code2, Brain, ArrowLeftRight, GitBranch, ListOrdered,
   Table2, Play, Eraser, Loader2, CheckCircle2, XCircle, AlertTriangle,
-  Info, Cpu, TrendingDown, Zap,
+  Info, Cpu, TrendingDown, Zap, Sparkles, Copy, Check,
 } from 'lucide-react';
 
 import { getHealth, getModelInfo, analyzeSource, tokenizeSource, type PipelineResponse, type ModelInfoResponse } from './api';
@@ -389,7 +389,7 @@ export default function App() {
                   <OverviewTab result={result} modelInfo={modelInfo} />
                 )}
                 {activeTab === 'ml' && (
-                  <MLTab result={result} modelInfo={modelInfo} />
+                  <MLTab result={result} modelInfo={modelInfo} onApplyCode={(c) => setCode(c)} />
                 )}
                 {activeTab === 'tac' && (
                   <TACTab result={result} />
@@ -539,7 +539,18 @@ function OverviewTab({ result, modelInfo: _modelInfo }: { result: PipelineRespon
 }
 
 // ─── ML Advisor Tab ───────────────────────────────────────────────────────────
-function MLTab({ result, modelInfo }: { result: PipelineResponse | null; modelInfo: ModelInfoResponse | null }) {
+function MLTab({
+  result,
+  modelInfo,
+  onApplyCode,
+}: {
+  result: PipelineResponse | null;
+  modelInfo: ModelInfoResponse | null;
+  onApplyCode?: (code: string) => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [viewMode, setViewMode] = useState<'c' | 'tac'>('c');
+
   if (!result?.success || !result.ml) {
     return (
       <div className="empty-state">
@@ -551,9 +562,81 @@ function MLTab({ result, modelInfo }: { result: PipelineResponse | null; modelIn
   }
 
   const { features, recommendations } = result.ml;
+  const optimizedC = result.phases?.optimized_code || '';
+  const tacAfter = result.phases?.tac_after || [];
+
+  const handleCopy = () => {
+    if (!optimizedC) return;
+    navigator.clipboard.writeText(optimizedC);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <div className="panel-fill">
+      {/* ── ✨ Suggested Optimized Code Card ── */}
+      <div className="card" style={{ border: '1px solid rgba(59, 130, 246, 0.35)', background: 'var(--bg-surface)' }}>
+        <div className="card-header" style={{ background: 'rgba(59, 130, 246, 0.08)', flexWrap: 'wrap', gap: 8 }}>
+          <span className="card-title" style={{ color: 'var(--accent-blue)', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Sparkles size={14} /> Suggested Optimized Code (ML Output)
+          </span>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'inline-flex', background: 'var(--bg-base)', borderRadius: 4, padding: 2, border: '1px solid var(--border-subtle)' }}>
+              <button
+                className={`btn btn-sm ${viewMode === 'c' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setViewMode('c')}
+                style={{ fontSize: 11, padding: '2px 8px', borderRadius: 3 }}
+              >
+                Suggested C Code
+              </button>
+              <button
+                className={`btn btn-sm ${viewMode === 'tac' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setViewMode('tac')}
+                style={{ fontSize: 11, padding: '2px 8px', borderRadius: 3 }}
+              >
+                Optimized TAC
+              </button>
+            </div>
+            {optimizedC && (
+              <>
+                <button className="btn btn-ghost btn-sm" onClick={handleCopy} style={{ fontSize: 11, gap: 4 }}>
+                  {copied ? <Check size={12} color="var(--accent-green)" /> : <Copy size={12} />}
+                  {copied ? 'Copied!' : 'Copy Code'}
+                </button>
+                {onApplyCode && (
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => onApplyCode(optimizedC)}
+                    style={{ fontSize: 11, gap: 4, background: 'var(--accent-blue)' }}
+                  >
+                    Apply to Editor
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+        <div style={{ padding: 14, background: 'var(--bg-base)', minHeight: 120, maxHeight: 300, overflowY: 'auto' }}>
+          {viewMode === 'c' ? (
+            <pre
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 12.5,
+                lineHeight: 1.6,
+                color: '#a5b4fc',
+                margin: 0,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}
+            >
+              {optimizedC || '// Run pipeline to generate suggested optimized C code'}
+            </pre>
+          ) : (
+            <TacViewer instructions={tacAfter} label="Optimized TAC Instructions" />
+          )}
+        </div>
+      </div>
+
       {/* Model info bar */}
       <div className="card">
         <div className="card-header">
@@ -678,6 +761,7 @@ function ASTTab({ result }: { result: PipelineResponse | null }) {
                 <th>Identifier</th>
                 <th>Category</th>
                 <th>Type</th>
+                <th>Value</th>
                 <th>Scope</th>
                 <th>Function</th>
                 <th>Line</th>
@@ -685,16 +769,17 @@ function ASTTab({ result }: { result: PipelineResponse | null }) {
             </thead>
             <tbody>
               {symbol_table.length === 0 ? (
-                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-tertiary)' }}>No symbols declared.</td></tr>
+                <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-tertiary)' }}>No symbols declared.</td></tr>
               ) : symbol_table.map((sym, i) => (
                 <tr key={i}>
                   <td><code className="mono">{sym.name}</code></td>
                   <td>
-                    <span className={`header-badge ${sym.category === 'function' ? 'badge-purple' : 'badge-surface'}`}>
-                      {sym.category}
+                    <span className={`header-badge ${(sym.category || (sym as any).kind) === 'function' ? 'badge-purple' : 'badge-surface'}`}>
+                      {sym.category || (sym as any).kind || 'variable'}
                     </span>
                   </td>
                   <td><code className="mono">{sym.type}</code></td>
+                  <td><code className="mono" style={{ color: '#a5b4fc' }}>{(sym as any).value ?? '—'}</code></td>
                   <td style={{ color: 'var(--text-secondary)' }}>Level {sym.scope_level}</td>
                   <td style={{ color: 'var(--text-secondary)' }}>{sym.enclosing_function ?? 'global'}</td>
                   <td style={{ color: 'var(--text-tertiary)' }}>L{sym.line}</td>

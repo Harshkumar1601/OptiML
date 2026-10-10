@@ -280,9 +280,9 @@ body {
 .panel-tabs {
   display: flex;
   align-items: center;
-  gap: 0;
+  gap: 4px;
   border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-surface);
+  background: var(--bg-sidebar);
   padding: 0 16px;
   flex-shrink: 0;
 }
@@ -296,19 +296,25 @@ body {
   font-weight: 500;
   color: var(--text-secondary);
   cursor: pointer;
+  background: transparent;
+  border: none;
   border-bottom: 2px solid transparent;
   transition: all 0.12s ease;
   user-select: none;
   white-space: nowrap;
+  outline: none;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
 }
 
 .panel-tab:hover {
   color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .panel-tab.active {
   color: var(--accent-blue);
   border-bottom-color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.08);
 }
 
 .panel-tab svg {

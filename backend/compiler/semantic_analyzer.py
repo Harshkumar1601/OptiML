@@ -31,7 +31,7 @@ Public API:
       }
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from compiler import ast_nodes as N
 from compiler.symbol_table import SymbolTable, DuplicateDeclarationError
@@ -69,6 +69,7 @@ class SemanticAnalyzer:
         self._symtab = SymbolTable()
         self._errors: List[Dict[str, Any]] = []
         self._has_return: bool = False   # tracks return inside current function
+        self._func_defs: Dict[str, N.FunctionDefNode] = {}
 
     # -----------------------------------------------------------------------
     # Public entry point
@@ -98,10 +99,12 @@ class SemanticAnalyzer:
         analyzing any function bodies. This enables forward references.
         """
         for func in program.functions:
+            self._func_defs[func.name] = func
             entry = {
                 "name":        func.name,
                 "kind":        "function",
                 "type":        func.return_type,
+                "value":       f"fn({', '.join(p.param_type for p in func.params)}) -> {func.return_type}",
                 "return_type": func.return_type,
                 "param_types": [p.param_type for p in func.params],
                 "param_names": [p.name for p in func.params],
@@ -179,6 +182,18 @@ class SemanticAnalyzer:
             self._visit_stmt(stmt)
         self._symtab.pop_scope()
 
+    def _dry_visit_block(self, block: N.BlockNode) -> None:
+        """Visit a block for error checking without permanently mutating symbol values."""
+        saved = {id(s): (s.get("value"), s.get("num_value")) for s in self._symtab._all_symbols}
+        self._visit_block(block)
+        for s in self._symtab._all_symbols:
+            if id(s) in saved:
+                s["value"], s["num_value"] = saved[id(s)]
+
+    def _eval_condition(self, node: Optional[N.ASTNode]) -> Optional[bool]:
+        """Helper to evaluate compile-time constant condition expressions."""
+        return eval_condition(node, self._symtab, self._func_defs)
+
     # -----------------------------------------------------------------------
     # Declaration
     # -----------------------------------------------------------------------
@@ -199,11 +214,14 @@ class SemanticAnalyzer:
             )
 
         # Declare the variable in the current scope
+        num_val, val_str = eval_constant_expr(node.init_expr, self._symtab, self._func_defs) if node.init_expr else (None, "—")
         self._declare_variable(
             name=node.name,
             kind="variable",
             var_type=node.var_type,
             line=node.line,
+            value=val_str,
+            num_value=num_val,
         )
 
     # -----------------------------------------------------------------------
@@ -222,6 +240,9 @@ class SemanticAnalyzer:
 
         # Evaluate RHS
         expr_type = self._visit_expr(node.expr)
+        num_val, val_str = eval_constant_expr(node.expr, self._symtab, self._func_defs)
+        symbol["value"] = val_str
+        symbol["num_value"] = num_val
 
         # Type-check assignment
         if expr_type is not None:
@@ -236,17 +257,42 @@ class SemanticAnalyzer:
     # If / if-else
     # -----------------------------------------------------------------------
     def _visit_if(self, node: N.IfNode) -> None:
+        cond_val = self._eval_condition(node.condition)
         self._visit_condition(node.condition)
-        self._visit_block(node.then_block)
-        if node.else_block is not None:
-            self._visit_block(node.else_block)
+
+        if cond_val is True:
+            self._visit_block(node.then_block)
+            if node.else_block is not None:
+                self._dry_visit_block(node.else_block)
+        elif cond_val is False:
+            if node.else_block is not None:
+                self._visit_block(node.else_block)
+            self._dry_visit_block(node.then_block)
+        else:
+            self._visit_block(node.then_block)
+            if node.else_block is not None:
+                self._visit_block(node.else_block)
 
     # -----------------------------------------------------------------------
     # While
     # -----------------------------------------------------------------------
     def _visit_while(self, node: N.WhileNode) -> None:
-        self._visit_condition(node.condition)
-        self._visit_block(node.body)
+        cond_val = self._eval_condition(node.condition)
+        if cond_val is True:
+            iterations = 0
+            MAX_ITER = 1000
+            while cond_val is True and iterations < MAX_ITER:
+                self._visit_condition(node.condition)
+                self._visit_block(node.body)
+                iterations += 1
+                cond_val = self._eval_condition(node.condition)
+            self._visit_condition(node.condition)
+        elif cond_val is False:
+            self._visit_condition(node.condition)
+            self._dry_visit_block(node.body)
+        else:
+            self._visit_condition(node.condition)
+            self._visit_block(node.body)
 
     # -----------------------------------------------------------------------
     # For
@@ -260,11 +306,28 @@ class SemanticAnalyzer:
         elif isinstance(node.init, N.AssignmentNode):
             self._visit_assignment(node.init)
 
-        self._visit_condition(node.condition)
-        self._visit_assignment(node.update)
-
-        # Body is a block — open its own nested scope
-        self._visit_block(node.body)
+        cond_val = self._eval_condition(node.condition)
+        if cond_val is True:
+            iterations = 0
+            MAX_ITER = 1000
+            while cond_val is True and iterations < MAX_ITER:
+                self._visit_condition(node.condition)
+                self._visit_block(node.body)
+                if isinstance(node.update, N.AssignmentNode):
+                    self._visit_assignment(node.update)
+                iterations += 1
+                cond_val = self._eval_condition(node.condition)
+            self._visit_condition(node.condition)
+        elif cond_val is False:
+            self._visit_condition(node.condition)
+            self._dry_visit_block(node.body)
+            if isinstance(node.update, N.AssignmentNode):
+                self._visit_assignment(node.update)
+        else:
+            self._visit_condition(node.condition)
+            self._visit_block(node.body)
+            if isinstance(node.update, N.AssignmentNode):
+                self._visit_assignment(node.update)
 
         self._symtab.pop_scope()
 
@@ -418,13 +481,17 @@ class SemanticAnalyzer:
         kind: str,
         var_type: str,
         line: int,
+        value: str = "—",
+        num_value: Optional[Any] = None,
     ) -> None:
         """Declare a variable/parameter in the current scope, recording any error."""
         entry = {
-            "name":  name,
-            "kind":  kind,
-            "type":  var_type,
-            "line":  line,
+            "name":      name,
+            "kind":      kind,
+            "type":      var_type,
+            "value":     value,
+            "num_value": num_value,
+            "line":      line,
         }
         try:
             self._symtab.declare(entry)
@@ -480,6 +547,176 @@ class SemanticAnalyzer:
             "line":    line,
             "message": message,
         })
+
+
+def eval_constant_expr(
+    node: Optional[N.ASTNode],
+    symtab: SymbolTable,
+    func_defs: Optional[Dict[str, N.FunctionDefNode]] = None,
+) -> Tuple[Optional[Any], str]:
+    """
+    Evaluate constant arithmetic expressions at compile time using symbol table.
+    Returns (num_val, str_repr).
+    """
+    if node is None:
+        return (None, "—")
+
+    if isinstance(node, N.IntLiteralNode):
+        return (node.value, str(node.value))
+
+    if isinstance(node, N.FloatLiteralNode):
+        return (node.value, str(node.value))
+
+    if isinstance(node, N.IdentifierNode):
+        sym = symtab.lookup(node.name)
+        if sym and sym.get("num_value") is not None:
+            return (sym["num_value"], str(sym["num_value"]))
+        return (None, node.name)
+
+    if isinstance(node, N.UnaryOpNode):
+        val, s = eval_constant_expr(node.operand, symtab, func_defs)
+        if val is not None:
+            res = -val
+            if isinstance(res, float) and res.is_integer():
+                res = int(res)
+            return (res, str(res))
+        return (None, f"{node.op}{s}")
+
+    if isinstance(node, N.BinOpNode):
+        left_val, left_str = eval_constant_expr(node.left, symtab, func_defs)
+        right_val, right_str = eval_constant_expr(node.right, symtab, func_defs)
+
+        if left_val is not None and right_val is not None:
+            op = node.op
+            try:
+                if op == "+":
+                    res = left_val + right_val
+                elif op == "-":
+                    res = left_val - right_val
+                elif op == "*":
+                    res = left_val * right_val
+                elif op == "/" and right_val != 0:
+                    res = left_val / right_val
+                elif op == "%" and right_val != 0:
+                    res = left_val % right_val
+                else:
+                    res = None
+
+                if res is not None:
+                    if isinstance(res, float) and res.is_integer():
+                        res = int(res)
+                    return (res, str(res))
+            except Exception:
+                pass
+
+        return (None, f"{left_str} {node.op} {right_str}")
+
+    if isinstance(node, N.FuncCallExprNode):
+        arg_evals = [eval_constant_expr(a, symtab, func_defs) for a in node.args]
+        args_str = ", ".join(ae[1] for ae in arg_evals)
+        if func_defs and node.name in func_defs and all(ae[0] is not None for ae in arg_evals):
+            func_node = func_defs[node.name]
+            if len(func_node.params) == len(node.args):
+                temp_symtab = SymbolTable()
+                for param, ae in zip(func_node.params, arg_evals):
+                    temp_symtab.declare({
+                        "name": param.name,
+                        "kind": "parameter",
+                        "type": param.param_type,
+                        "value": ae[1],
+                        "num_value": ae[0],
+                        "line": param.line,
+                    })
+                for stmt in func_node.body.statements:
+                    if isinstance(stmt, N.ReturnNode) and stmt.expr:
+                        ret_val, ret_str = eval_constant_expr(stmt.expr, temp_symtab, func_defs)
+                        if ret_val is not None:
+                            return (ret_val, ret_str)
+                    elif isinstance(stmt, N.DeclarationNode):
+                        v, vs = eval_constant_expr(stmt.init_expr, temp_symtab, func_defs) if stmt.init_expr else (None, "—")
+                        temp_symtab.declare({
+                            "name": stmt.name,
+                            "kind": "variable",
+                            "type": stmt.var_type,
+                            "value": vs,
+                            "num_value": v,
+                            "line": stmt.line,
+                        })
+                    elif isinstance(stmt, N.AssignmentNode):
+                        v, vs = eval_constant_expr(stmt.expr, temp_symtab, func_defs)
+                        s = temp_symtab.lookup(stmt.name)
+                        if s:
+                            s["value"] = vs
+                            s["num_value"] = v
+        return (None, f"{node.name}({args_str})")
+
+    return (None, "expr")
+
+
+def eval_condition(
+    node: Optional[N.ASTNode],
+    symtab: SymbolTable,
+    func_defs: Optional[Dict[str, N.FunctionDefNode]] = None,
+) -> Optional[bool]:
+    """
+    Evaluate compile-time relational or boolean condition expressions.
+    Returns True, False, or None if condition depends on non-constant state.
+    """
+    if node is None:
+        return None
+    if isinstance(node, N.ConditionNode):
+        if node.op in ("&&", "||"):
+            left_b = eval_condition(node.left, symtab, func_defs)
+            right_b = eval_condition(node.right, symtab, func_defs)
+            if left_b is not None and right_b is not None:
+                if node.op == "&&":
+                    return left_b and right_b
+                if node.op == "||":
+                    return left_b or right_b
+            return None
+        else:
+            left_val, _ = eval_constant_expr(node.left, symtab, func_defs)
+            right_val, _ = eval_constant_expr(node.right, symtab, func_defs)
+            if left_val is not None and right_val is not None:
+                op = node.op
+                if op == "<":
+                    return left_val < right_val
+                elif op == "<=":
+                    return left_val <= right_val
+                elif op == ">":
+                    return left_val > right_val
+                elif op == ">=":
+                    return left_val >= right_val
+                elif op == "==":
+                    return left_val == right_val
+                elif op == "!=":
+                    return left_val != right_val
+            return None
+    else:
+        val, _ = eval_constant_expr(node, symtab, func_defs)
+        if val is not None:
+            return bool(val != 0)
+        return None
+
+
+def expr_to_string(node: Optional[N.ASTNode]) -> str:
+    """Helper to convert an expression AST node to human-readable text representation."""
+    if node is None:
+        return "—"
+    if isinstance(node, N.IntLiteralNode):
+        return str(node.value)
+    if isinstance(node, N.FloatLiteralNode):
+        return str(node.value)
+    if isinstance(node, N.IdentifierNode):
+        return node.name
+    if isinstance(node, N.BinOpNode):
+        return f"{expr_to_string(node.left)} {node.op} {expr_to_string(node.right)}"
+    if isinstance(node, N.UnaryOpNode):
+        return f"{node.op}{expr_to_string(node.operand)}"
+    if isinstance(node, N.FuncCallExprNode):
+        args_str = ", ".join(expr_to_string(a) for a in node.args)
+        return f"{node.name}({args_str})"
+    return "expr"
 
 
 # ---------------------------------------------------------------------------

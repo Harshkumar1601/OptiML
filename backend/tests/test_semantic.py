@@ -783,3 +783,31 @@ class TestResultStructure:
         result = run(src)
         undeclared = [e for e in result["errors"] if e["code"] == "UNDECLARED_VARIABLE"]
         assert len(undeclared) == 3
+
+
+class TestDynamicSymbolEvaluation:
+    def test_user_loop_and_function_symbol_evaluation(self):
+        src = """
+        int add(int a, int b) {
+            return a + b;
+        }
+
+        int main() {
+            int x = 10;
+            int y = 20;
+            int sum = add(x, y);
+            int i = 0;
+            while (i < 5) {
+                sum = sum + i;
+                i = i + 1;
+            }
+            return sum;
+        }
+        """
+        result = run(src)
+        assert result["success"] is True
+        sym_map = {s["name"]: s["value"] for s in result["symbol_table"]}
+        assert sym_map["x"] == "10"
+        assert sym_map["y"] == "20"
+        assert sym_map["sum"] == "40"
+        assert sym_map["i"] == "5"
